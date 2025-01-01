@@ -12,9 +12,9 @@ Este projeto utiliza inteligência artificial para processar arquivos de áudio 
 
 # Tecnologias Utilizadas
 	•	OpenAI Whisper: Para transcrição de áudio com alta precisão.
-	•	NLTK: Para análise de linguagem natural e identificação de temas.
+	•	Spacy e NLTK: Para análise de linguagem natural e identificação de temas.
 	•	Librosa e Matplotlib: Para manipulação e visualização do áudio.
-	•	Flask: Para criar a interface gráfica.
+	•	TKinter Modern Theme: Para criar a interface gráfica.
 
 # Como Utilizar
 
