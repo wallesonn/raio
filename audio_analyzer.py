@@ -10,7 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from pydub import AudioSegment
-from pydub.playback import play
+import pygame
+import io
 import threading
 
 class AudioAnalyzerApp:
@@ -22,17 +23,57 @@ class AudioAnalyzerApp:
         # Initialize Whisper model
         self.model = whisper.load_model("base")
         
-        # Initialize Spacy
-        self.nlp = spacy.load("pt_core_news_sm")
+        # Initialize Spacy with medium model that includes word vectors
+        self.nlp = spacy.load("pt_core_news_md")
+        
+        # Similarity threshold for topic detection
+        self.similarity_threshold = 0.5
+        
+        # Dictionary of related words for each topic
+        self.topic_related_words = {
+            "Drogas": [
+                "cocaína", "maconha", "crack", "heroína", "tráfico",
+                "vício", "substância", "entorpecente", "dependente", "overdose"
+            ],
+            "Morte": [
+                "falecimento", "assassinato", "homicídio", "suicídio", "funeral",
+                "velório", "cemitério", "luto", "óbito", "cadáver"
+            ],
+            "Crimes Sexuais": [
+                "estupro", "abuso", "assédio", "pedofilia", "violência",
+                "exploração", "atentado", "violação", "molestamento", "agressão"
+            ],
+            "Família": [
+                "pai", "mãe", "filho", "irmão", "parente",
+                "casamento", "divórcio", "adoção", "guarda", "pensão"
+            ],
+            "Palavras Ofensivas": [
+                "merda", "porra", "caralho", "puta", "viado",
+                "buceta", "idiota", "imbecil", "babaca", "cuzão"
+            ]
+        }
         
         # Download necessary NLTK data
         nltk.download('punkt')
         nltk.download('averaged_perceptron_tagger')
         
+        # Initialize pygame mixer
+        pygame.mixer.init()
+        
         # Audio playback variables
         self.audio_segment = None
         self.is_playing = False
         self.play_thread = None
+        self.stop_requested = False
+        
+        # Sensitive topics
+        self.topics = {
+            "Drogas": tk.BooleanVar(value=True),
+            "Morte": tk.BooleanVar(value=True),
+            "Crimes Sexuais": tk.BooleanVar(value=True),
+            "Família": tk.BooleanVar(value=True),
+            "Palavras Ofensivas": tk.BooleanVar(value=True)
+        }
         
         self.setup_ui()
         
@@ -59,30 +100,31 @@ class AudioAnalyzerApp:
         self.play_button = ctk.CTkButton(
             self.controls_frame,
             text="▶ Reproduzir",
-            command=self.toggle_play,
+            command=self.start_playback,
             state="disabled"
         )
         self.play_button.pack(pady=5)
+        
+        self.stop_button = ctk.CTkButton(
+            self.controls_frame,
+            text="⏹ Parar",
+            command=self.stop_playback,
+            state="disabled"
+        )
+        self.stop_button.pack(pady=5)
         
         # Sensitive topics frame
         self.topics_frame = ctk.CTkFrame(self.left_panel)
         self.topics_frame.pack(pady=10, fill=tk.X)
         
-        ctk.CTkLabel(self.topics_frame, text="Temas Sensíveis:").pack()
-        
-        # Default sensitive topics
-        self.topics = {
-            "Drogas": tk.BooleanVar(value=True),
-            "Morte": tk.BooleanVar(value=True),
-            "Crimes Sexuais": tk.BooleanVar(value=True)
-        }
+        ctk.CTkLabel(self.topics_frame, text="Temas Sensíveis:").pack(anchor=tk.W, padx=5)
         
         for topic, var in self.topics.items():
             ctk.CTkCheckBox(
                 self.topics_frame,
                 text=topic,
                 variable=var
-            ).pack(pady=2)
+            ).pack(pady=2, anchor=tk.W, padx=5)
         
         # Custom topic entry
         self.custom_topic = ctk.CTkEntry(
@@ -117,9 +159,17 @@ class AudioAnalyzerApp:
         # Transcription text
         self.transcription_text = ctk.CTkTextbox(
             self.right_panel,
-            height=300
+            height=200
         )
         self.transcription_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Sensitive content matches
+        ctk.CTkLabel(self.right_panel, text="Trechos Sensíveis Detectados:").pack(anchor=tk.W, padx=5)
+        self.matches_text = ctk.CTkTextbox(
+            self.right_panel,
+            height=100
+        )
+        self.matches_text.pack(fill=tk.BOTH, expand=True, pady=5)
         
     def select_file(self):
         self.filename = filedialog.askopenfilename(
@@ -129,6 +179,7 @@ class AudioAnalyzerApp:
             self.load_audio_visualization()
             self.load_audio_playback()
             self.play_button.configure(state="normal")
+            self.stop_button.configure(state="normal")
     
     def load_audio_visualization(self):
         # Load audio file
@@ -149,38 +200,56 @@ class AudioAnalyzerApp:
     def load_audio_playback(self):
         """Load audio file for playback"""
         try:
+            # Convert audio to WAV format using pydub
             self.audio_segment = AudioSegment.from_file(self.filename)
+            wav_data = self.audio_segment.export(format="wav")
+            
+            # Load the audio data into pygame
+            pygame.mixer.music.load(wav_data)
         except Exception as e:
             print(f"Error loading audio: {e}")
             self.audio_segment = None
     
-    def toggle_play(self):
-        """Toggle audio playback"""
-        if not self.audio_segment:
+    def start_playback(self):
+        """Start audio playback"""
+        if not self.audio_segment or self.is_playing:
             return
             
+        self.is_playing = True
+        self.stop_requested = False
+        self.play_button.configure(state="disabled")
+        self.stop_button.configure(state="normal")
+        
+        # Start playback in a separate thread
+        self.play_thread = threading.Thread(target=self.play_audio)
+        self.play_thread.daemon = True
+        self.play_thread.start()
+    
+    def stop_playback(self):
+        """Stop audio playback"""
         if self.is_playing:
+            pygame.mixer.music.stop()
+            self.stop_requested = True
             self.is_playing = False
-            self.play_button.configure(text="▶ Reproduzir")
-        else:
-            self.is_playing = True
-            self.play_button.configure(text="⏸ Pausar")
-            
-            # Start playback in a separate thread to avoid blocking the UI
-            self.play_thread = threading.Thread(target=self.play_audio)
-            self.play_thread.daemon = True
-            self.play_thread.start()
+            self.play_button.configure(state="normal")
+            self.stop_button.configure(state="disabled")
     
     def play_audio(self):
         """Play audio in a separate thread"""
         try:
-            play(self.audio_segment)
+            pygame.mixer.music.play()
+            
+            # Monitor playback status
+            while pygame.mixer.music.get_busy() and not self.stop_requested:
+                pygame.time.Clock().tick(10)
+            
         except Exception as e:
             print(f"Error playing audio: {e}")
         finally:
             self.is_playing = False
-            self.play_button.configure(text="▶ Reproduzir")
-            
+            self.root.after(0, lambda: self.play_button.configure(state="normal"))
+            self.root.after(0, lambda: self.stop_button.configure(state="disabled"))
+    
     def add_custom_topic(self):
         new_topic = self.custom_topic.get()
         if new_topic and new_topic not in self.topics:
@@ -189,9 +258,45 @@ class AudioAnalyzerApp:
                 self.topics_frame,
                 text=new_topic,
                 variable=self.topics[new_topic]
-            ).pack(pady=2)
+            ).pack(pady=2, anchor=tk.W, padx=5)
             self.custom_topic.delete(0, tk.END)
     
+    def find_similar_words(self, text, topic):
+        """
+        Find words in text that are semantically similar to the topic and its related words.
+        Returns a list of similar words and their similarity scores.
+        """
+        # Process the text with spaCy
+        doc = self.nlp(text.lower())
+        similar_words = set()  # Using set to avoid duplicates
+        
+        # Get related words for the topic
+        related_words = self.topic_related_words.get(topic, [])
+        
+        # Process topic and its related words
+        topic_tokens = [self.nlp(topic)[0]] + [self.nlp(word)[0] for word in related_words]
+        
+        # Check similarity with topic and related words
+        for token in doc:
+            if token.has_vector and not token.is_stop and not token.is_punct:
+                # Check similarity with topic and all related words
+                for topic_token in topic_tokens:
+                    if topic_token.has_vector:
+                        similarity = token.similarity(topic_token)
+                        if similarity > self.similarity_threshold:
+                            similar_words.add(token.text)
+                            break  # If we found a match, no need to check other related words
+        
+        return list(similar_words)
+
+    def find_sensitive_content(self, sentence, topic):
+        """
+        Check if a sentence contains content similar to a sensitive topic.
+        Returns a tuple of (bool, list of similar words) indicating if sensitive content was found.
+        """
+        similar_words = self.find_similar_words(sentence, topic)
+        return len(similar_words) > 0, similar_words
+
     def process_audio(self):
         if not hasattr(self, 'filename'):
             return
@@ -200,37 +305,40 @@ class AudioAnalyzerApp:
         result = self.model.transcribe(self.filename)
         transcription = result["text"]
         
-        # Process text for sensitive topics
-        doc = self.nlp(transcription)
-        
-        # Highlight sensitive topics
-        highlighted_text = transcription
-        for topic, var in self.topics.items():
-            if var.get():
-                # Case-insensitive search
-                topic_lower = topic.lower()
-                text_lower = highlighted_text.lower()
-                
-                # Find all occurrences and highlight them
-                start = 0
-                while True:
-                    pos = text_lower.find(topic_lower, start)
-                    if pos == -1:
-                        break
-                    
-                    # Add highlighting markers
-                    highlighted_text = (
-                        highlighted_text[:pos] +
-                        "**" + highlighted_text[pos:pos+len(topic)] + "**" +
-                        highlighted_text[pos+len(topic):]
-                    )
-                    
-                    # Update search position
-                    start = pos + len(topic) + 4  # +4 for the added ** markers
-        
-        # Display results
+        # Clear previous results
         self.transcription_text.delete("1.0", tk.END)
-        self.transcription_text.insert("1.0", highlighted_text)
+        self.matches_text.delete("1.0", tk.END)
+        
+        # Display transcription
+        self.transcription_text.insert("1.0", transcription)
+        
+        # Process text for sensitive content
+        doc = self.nlp(transcription.lower())
+        sentences = [sent.text.strip() for sent in doc.sents]
+        
+        # Check each sentence for sensitive topics
+        matches = []
+        for sentence in sentences:
+            for topic, var in self.topics.items():
+                if var.get():  # If topic is selected
+                    is_sensitive, similar_words = self.find_sensitive_content(sentence, topic)
+                    if is_sensitive:
+                        # Get the related words that were used in detection
+                        related_words = ", ".join(self.topic_related_words[topic])
+                        detected_words = ", ".join(similar_words)
+                        
+                        matches.append(
+                            f"Tema '{topic}' detectado na frase:\n"
+                            f"'{sentence}'\n"
+                            f"Palavras relacionadas ao tema: {related_words}\n"
+                            f"Palavras detectadas: {detected_words}\n\n"
+                        )
+        
+        # Display matches
+        if matches:
+            self.matches_text.insert("1.0", "".join(matches))
+        else:
+            self.matches_text.insert("1.0", "Nenhum trecho sensível detectado.")
 
 if __name__ == "__main__":
     root = ctk.CTk()

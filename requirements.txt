@@ -9,3 +9,5 @@ numpy==1.24.3
 torch==2.5.1
 ttkthemes==3.2.2
 pydub==0.25.1
+pygame==2.5.0
+https://github.com/explosion/spacy-models/releases/download/pt_core_news_md-3.5.0/pt_core_news_md-3.5.0.tar.gz
