@@ -13,6 +13,7 @@ from pydub import AudioSegment
 import pygame
 import io
 import threading
+import time
 
 class AudioAnalyzerApp:
     def __init__(self, root):
@@ -114,17 +115,23 @@ class AudioAnalyzerApp:
         )
         self.process_button.pack(pady=5)
         
-        # Sensitive topics frame
+        # Topics frame
         self.topics_frame = ctk.CTkFrame(self.left_panel)
         self.topics_frame.pack(pady=10, fill=tk.X)
         
-        ctk.CTkLabel(self.topics_frame, text="Temas Sensíveis:").pack(anchor=tk.W, padx=5)
+        # Label for topics
+        topics_label = ctk.CTkLabel(
+            self.topics_frame,
+            text="Temas Sensíveis:"
+        )
+        topics_label.pack(pady=5)
         
-        for topic, var in self.topics.items():
+        # Create checkboxes for each topic
+        for topic in sorted(self.topics.keys()):
             ctk.CTkCheckBox(
                 self.topics_frame,
                 text=topic,
-                variable=var
+                variable=self.topics[topic]
             ).pack(pady=2, anchor=tk.W, padx=5)
         
         # Custom topic entry
@@ -132,23 +139,26 @@ class AudioAnalyzerApp:
             self.topics_frame,
             placeholder_text="Adicionar novo tema..."
         )
-        self.custom_topic.pack(pady=5)
+        self.custom_topic.pack(pady=5, padx=5, fill=tk.X)
         
-        ctk.CTkButton(
+        # Add topic button
+        add_topic_button = ctk.CTkButton(
             self.topics_frame,
             text="Adicionar Tema",
             command=self.add_custom_topic
-        ).pack(pady=5)
+        )
+        add_topic_button.pack(pady=5)
         
         # Search button
         self.search_button = ctk.CTkButton(
-            self.left_panel,
-            text="Pesquisar Temas Sensíveis",
-            command=self.search_sensitive_topics
+            self.topics_frame,
+            text="Buscar Temas",
+            command=self.search_sensitive_topics,
+            state="disabled"
         )
-        self.search_button.pack(pady=10)
+        self.search_button.pack(pady=5)
         
-        # Right panel for visualization
+        # Right panel for visualization and results
         self.right_panel = ctk.CTkFrame(self.main_frame)
         self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
@@ -158,20 +168,16 @@ class AudioAnalyzerApp:
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
         # Transcription text
-        self.transcription_text = ctk.CTkTextbox(
-            self.right_panel,
-            height=200
-        )
+        self.transcription_text = ctk.CTkFrame(self.right_panel)
         self.transcription_text.pack(fill=tk.BOTH, expand=True, pady=5)
         
         # Sensitive content matches
-        ctk.CTkLabel(self.right_panel, text="Trechos Sensíveis Detectados:").pack(anchor=tk.W, padx=5)
         self.matches_text = ctk.CTkTextbox(
             self.right_panel,
-            height=100
+            height=200
         )
         self.matches_text.pack(fill=tk.BOTH, expand=True, pady=5)
-        
+
     def select_file(self):
         self.filename = filedialog.askopenfilename(
             filetypes=[("Audio Files", "*.mp3 *.wav *.ogg")]
@@ -258,13 +264,102 @@ class AudioAnalyzerApp:
         new_topic = self.custom_topic.get()
         if new_topic and new_topic not in self.topics:
             self.topics[new_topic] = tk.BooleanVar(value=True)
-            ctk.CTkCheckBox(
+            self.topic_related_words[new_topic] = [new_topic]  # Usa o próprio tema como palavra relacionada
+            
+            # Remove todos os widgets do frame
+            for widget in self.topics_frame.winfo_children():
+                widget.destroy()
+            
+            # Recria o título
+            topics_label = ctk.CTkLabel(
                 self.topics_frame,
-                text=new_topic,
-                variable=self.topics[new_topic]
-            ).pack(pady=2, anchor=tk.W, padx=5)
-            self.custom_topic.delete(0, tk.END)
+                text="Temas Sensíveis:"
+            )
+            topics_label.pack(pady=5)
+            
+            # Recria todos os checkboxes em ordem alfabética
+            for topic in sorted(self.topics.keys()):
+                ctk.CTkCheckBox(
+                    self.topics_frame,
+                    text=topic,
+                    variable=self.topics[topic]
+                ).pack(pady=2, anchor=tk.W, padx=5)
+            
+            # Recria o campo de entrada e botões
+            self.custom_topic = ctk.CTkEntry(
+                self.topics_frame,
+                placeholder_text="Adicionar novo tema..."
+            )
+            self.custom_topic.pack(pady=5, padx=5, fill=tk.X)
+            
+            add_topic_button = ctk.CTkButton(
+                self.topics_frame,
+                text="Adicionar Tema",
+                command=self.add_custom_topic
+            )
+            add_topic_button.pack(pady=5)
+            
+            # Botão de busca
+            self.search_button = ctk.CTkButton(
+                self.topics_frame,
+                text="Buscar Temas",
+                command=self.search_sensitive_topics,
+                state="normal" if hasattr(self, 'sentences') else "disabled"
+            )
+            self.search_button.pack(pady=5)
     
+    def play_segment(self, start_time, end_time):
+        """Reproduz um segmento específico do áudio"""
+        if self.audio_segment:
+            # Para qualquer reprodução em andamento
+            self.stop_playback()
+            
+            # Extrai o segmento desejado
+            segment = self.audio_segment[int(start_time * 1000):int(end_time * 1000)]
+            
+            # Salva temporariamente o segmento
+            temp_file = "temp_segment.wav"
+            segment.export(temp_file, format="wav")
+            
+            # Carrega e reproduz o segmento
+            pygame.mixer.music.load(temp_file)
+            pygame.mixer.music.play()
+            
+            # Remove o arquivo temporário após um curto delay
+            def cleanup():
+                time.sleep((end_time - start_time) + 0.5)  # Espera o áudio terminar
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+            
+            threading.Thread(target=cleanup, daemon=True).start()
+
+    def create_sentence_frame(self, text, start_time, end_time):
+        """Cria um frame para uma sentença com botão de reprodução"""
+        frame = ctk.CTkFrame(self.transcription_text)
+        frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        # Botão de reprodução
+        play_btn = ctk.CTkButton(
+            frame,
+            text="▶",
+            width=30,
+            command=lambda s=start_time, e=end_time: self.play_segment(s, e)
+        )
+        play_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Texto da transcrição
+        text_label = ctk.CTkLabel(
+            frame,
+            text=f"[{start_time:.2f}s - {end_time:.2f}s] {text}",
+            wraplength=500,
+            justify=tk.LEFT
+        )
+        text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        return frame
+
     def find_similar_words(self, text, topic):
         """
         Find words in text that are semantically similar to the topic and its related words.
@@ -305,53 +400,35 @@ class AudioAnalyzerApp:
         if not hasattr(self, 'filename'):
             return
         
-        # Transcribe audio
-        result = self.model.transcribe(self.filename)
-        transcription = result["text"]
-        
-        # Clear previous results
-        self.transcription_text.delete("1.0", tk.END)
-        self.matches_text.delete("1.0", tk.END)
-        
-        # Process text and timing information
-        self.sentences = [(segment["text"].strip(), segment["start"], segment["end"]) for segment in result["segments"]]
-        
-        # Display transcription with timing information
-        for text, start, end in self.sentences:
-            timestamp = f"[{start:.2f}s - {end:.2f}s] "
-            self.transcription_text.insert(tk.END, timestamp)
-            self.transcription_text.insert(tk.END, text + "\n")
-        
-        # Check each sentence for sensitive topics
-        matches = []
-        for text, start, end in self.sentences:
-            for topic, var in self.topics.items():
-                if var.get():  # If topic is selected
-                    is_sensitive, similar_words = self.find_sensitive_content(text, topic)
-                    if is_sensitive:
-                        # Get the related words that were used in detection
-                        related_words = ", ".join(self.topic_related_words[topic])
-                        detected_words = ", ".join(similar_words)
-                        
-                        matches.append(
-                            f"Tema '{topic}' detectado na frase:\n"
-                            f"'{text}'\n"
-                            f"Palavras relacionadas ao tema: {related_words}\n"
-                            f"Palavras detectadas: {detected_words}\n\n"
-                        )
-        
-        # Display matches
-        if matches:
-            self.matches_text.insert("1.0", "".join(matches))
-        else:
-            self.matches_text.insert("1.0", "Nenhum trecho sensível detectado.")
+        try:
+            # Clear previous results
+            for widget in self.transcription_text.winfo_children():
+                widget.destroy()
+            self.matches_text.delete("1.0", tk.END)
+
+            # Load and process audio file
+            result = self.model.transcribe(self.filename)
+            
+            # Store sentences
+            self.sentences = [(segment["text"].strip(), segment["start"], segment["end"]) 
+                            for segment in result["segments"]]
+
+            # Display transcription with segments
+            for text, start, end in self.sentences:
+                self.create_sentence_frame(text, start, end)
+
+            # Enable search button
+            self.search_button.configure(state="normal")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao processar o áudio: {str(e)}")
 
     def search_sensitive_topics(self):
         """Search for sensitive topics in already transcribed sentences"""
         if not hasattr(self, 'sentences'):
-            tk.messagebox.showwarning("Aviso", "Primeiro processe um áudio para obter a transcrição.")
+            messagebox.showerror("Erro", "Por favor, processe um áudio primeiro.")
             return
-            
+        
         # Clear previous results
         self.matches_text.delete("1.0", tk.END)
         
@@ -359,7 +436,7 @@ class AudioAnalyzerApp:
         matches = []
         for text, start, end in self.sentences:
             for topic, var in self.topics.items():
-                if var.get():  # If topic is selected
+                if var.get():  # Se o tema está selecionado
                     is_sensitive, similar_words = self.find_sensitive_content(text, topic)
                     if is_sensitive:
                         # Get the related words that were used in detection
@@ -375,9 +452,9 @@ class AudioAnalyzerApp:
         
         # Display matches
         if matches:
-            self.matches_text.insert("1.0", "Temas sensíveis encontrados:\n\n" + "".join(matches))
+            self.matches_text.insert("1.0", "".join(matches))
         else:
-            self.matches_text.insert("1.0", "Nenhum tema sensível encontrado.")
+            self.matches_text.insert("1.0", "Nenhum tema sensível detectado.")
 
 if __name__ == "__main__":
     root = ctk.CTk()
