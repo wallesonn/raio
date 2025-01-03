@@ -14,6 +14,9 @@ import pygame
 import io
 import threading
 import time
+import hashlib
+from fpdf import FPDF
+from datetime import datetime
 
 class AudioAnalyzerApp:
     def __init__(self, root):
@@ -28,7 +31,7 @@ class AudioAnalyzerApp:
         self.nlp = spacy.load("pt_core_news_md")
         
         # Similarity threshold for topic detection
-        self.similarity_threshold = 0.5
+        self.similarity_threshold = 0.6
         
         # Dictionary of related words for each topic
         self.topic_related_words = {
@@ -111,15 +114,33 @@ class AudioAnalyzerApp:
         self.process_button = ctk.CTkButton(
             self.controls_frame,
             text="Processar Áudio",
-            command=self.process_audio
+            command=self.process_audio,
+            state="disabled"
         )
         self.process_button.pack(pady=5)
         
-        # Topics frame
-        self.topics_frame = ctk.CTkFrame(self.left_panel)
+        # Botão de busca de temas
+        self.search_button = ctk.CTkButton(
+            self.controls_frame,
+            text="Buscar Temas",
+            command=self.search_sensitive_topics,
+            state="disabled"
+        )
+        self.search_button.pack(pady=5)
+        
+        # Botão para gerar relatório PDF
+        self.pdf_button = ctk.CTkButton(
+            self.controls_frame,
+            text="Gerar Relatório PDF",
+            command=self.generate_pdf_report,
+            state="disabled"
+        )
+        self.pdf_button.pack(pady=5)
+        
+        # Topics frame with scrollbar
+        self.topics_frame = ctk.CTkScrollableFrame(self.left_panel, height=200)
         self.topics_frame.pack(pady=10, fill=tk.X)
         
-        # Label for topics
         topics_label = ctk.CTkLabel(
             self.topics_frame,
             text="Temas Sensíveis:"
@@ -141,22 +162,12 @@ class AudioAnalyzerApp:
         )
         self.custom_topic.pack(pady=5, padx=5, fill=tk.X)
         
-        # Add topic button
         add_topic_button = ctk.CTkButton(
             self.topics_frame,
             text="Adicionar Tema",
             command=self.add_custom_topic
         )
         add_topic_button.pack(pady=5)
-        
-        # Search button
-        self.search_button = ctk.CTkButton(
-            self.topics_frame,
-            text="Buscar Temas",
-            command=self.search_sensitive_topics,
-            state="disabled"
-        )
-        self.search_button.pack(pady=5)
         
         # Right panel for visualization and results
         self.right_panel = ctk.CTkFrame(self.main_frame)
@@ -167,16 +178,25 @@ class AudioAnalyzerApp:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.right_panel)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
-        # Transcription text
-        self.transcription_text = ctk.CTkFrame(self.right_panel)
-        self.transcription_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Frame para a transcrição com scrollbar
+        transcription_label = ctk.CTkLabel(self.right_panel, text="Transcrição:")
+        transcription_label.pack(pady=5)
         
-        # Sensitive content matches
-        self.matches_text = ctk.CTkTextbox(
-            self.right_panel,
-            height=200
-        )
-        self.matches_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.transcription_frame = ctk.CTkScrollableFrame(self.right_panel, height=300)
+        self.transcription_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.transcription_text = ctk.CTkFrame(self.transcription_frame)
+        self.transcription_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Frame para os resultados da busca com scrollbar
+        results_label = ctk.CTkLabel(self.right_panel, text="Temas Sensíveis Detectados:")
+        results_label.pack(pady=5)
+        
+        self.results_frame = ctk.CTkScrollableFrame(self.right_panel, height=200)
+        self.results_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.matches_text = ctk.CTkTextbox(self.results_frame, wrap=tk.WORD)
+        self.matches_text.pack(fill=tk.BOTH, expand=True)
 
     def select_file(self):
         self.filename = filedialog.askopenfilename(
@@ -186,6 +206,7 @@ class AudioAnalyzerApp:
             self.load_audio_visualization()
             self.load_audio_playback()
             self.play_button.configure(state="normal")
+            self.process_button.configure(state="normal")
     
     def load_audio_visualization(self):
         # Load audio file
@@ -417,8 +438,9 @@ class AudioAnalyzerApp:
             for text, start, end in self.sentences:
                 self.create_sentence_frame(text, start, end)
 
-            # Enable search button
+            # Enable search and PDF buttons
             self.search_button.configure(state="normal")
+            self.pdf_button.configure(state="normal")
 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao processar o áudio: {str(e)}")
@@ -455,6 +477,105 @@ class AudioAnalyzerApp:
             self.matches_text.insert("1.0", "".join(matches))
         else:
             self.matches_text.insert("1.0", "Nenhum tema sensível detectado.")
+    
+    def calculate_file_hash(self, filepath):
+        """Calcula o hash SHA-256 do arquivo"""
+        sha256_hash = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            # Ler o arquivo em blocos para não sobrecarregar a memória
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+
+    def generate_pdf_report(self):
+        """Gera um relatório PDF com a transcrição e análise de temas sensíveis"""
+        if not hasattr(self, 'sentences'):
+            messagebox.showerror("Erro", "Nenhuma transcrição disponível para gerar relatório.")
+            return
+            
+        # Solicita local para salvar o PDF
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            title="Salvar Relatório PDF"
+        )
+        
+        if not file_path:
+            return
+            
+        try:
+            # Calcular hash do arquivo
+            file_hash = self.calculate_file_hash(self.filename)
+            
+            # Criar PDF
+            pdf = FPDF()
+            
+            # Configurar página
+            pdf.add_page()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.set_margins(20, 20, 20)
+            
+            # Título
+            pdf.set_font('Arial', 'B', 16)
+            pdf.cell(0, 10, 'Relatório de Análise de Áudio', ln=True, align='C')
+            pdf.ln(5)
+            
+            # Informações do arquivo
+            pdf.set_font('Arial', '', 10)
+            current_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            pdf.cell(0, 6, f'Data: {current_time}', ln=True)
+            pdf.cell(0, 6, f'Arquivo: {os.path.basename(self.filename)}', ln=True)
+            
+            # Hash do arquivo
+            pdf.set_font('Arial', 'B', 10)
+            pdf.cell(0, 6, 'Hash SHA-256:', ln=True)
+            pdf.set_font('Arial', '', 8)  # Fonte menor para o hash
+            pdf.cell(0, 6, file_hash, ln=True)
+            pdf.ln(5)
+            
+            # Transcrição
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 10, 'Transcrição:', ln=True)
+            
+            pdf.set_font('Arial', '', 10)
+            for text, start, end in self.sentences:
+                timestamp = f'[{start:.2f}s - {end:.2f}s]'
+                pdf.multi_cell(0, 6, f'{timestamp}\n{text}', ln=True)
+                pdf.ln(2)
+            
+            # Temas Sensíveis
+            pdf.add_page()
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 10, 'Temas Sensíveis Detectados:', ln=True)
+            
+            # Procura por temas sensíveis
+            found_topics = False
+            pdf.set_font('Arial', '', 10)
+            
+            for text, start, end in self.sentences:
+                for topic, var in self.topics.items():
+                    if var.get():  # Se o tema está selecionado
+                        has_content, similar_words = self.find_sensitive_content(text, topic)
+                        if has_content:
+                            found_topics = True
+                            timestamp = f'[{start:.2f}s - {end:.2f}s]'
+                            pdf.set_font('Arial', 'B', 10)
+                            pdf.cell(0, 6, f'Tema: {topic}', ln=True)
+                            pdf.set_font('Arial', '', 10)
+                            pdf.multi_cell(0, 6, f'Tempo: {timestamp}\nTexto: {text}\nPalavras detectadas: {", ".join(similar_words)}', ln=True)
+                            pdf.ln(5)
+            
+            if not found_topics:
+                pdf.multi_cell(0, 6, 'Nenhum tema sensível detectado.', ln=True)
+            
+            # Salvar PDF
+            pdf.output(file_path)
+            
+            # Mostrar mensagem de sucesso
+            messagebox.showinfo("Sucesso", f"Relatório PDF gerado com sucesso!\nSalvo em: {file_path}")
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
 
 if __name__ == "__main__":
     root = ctk.CTk()
