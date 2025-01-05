@@ -54,6 +54,26 @@ class AudioAnalyzerApp:
             "Palavras Ofensivas": [
                 "merda", "porra", "caralho", "puta", "viado",
                 "buceta", "idiota", "imbecil", "babaca", "cuzão"
+            ],
+            "Violência": [
+                "agressão", "briga", "pancada", "espancamento", "soco",
+                "chute", "arma", "facada", "tiro", "ameaça"
+            ],
+            "Dinheiro": [
+                "roubo", "fraude", "propina", "suborno", "extorsão",
+                "lavagem", "desvio", "corrupção", "sonegação", "golpe"
+            ],
+            "Armas": [
+                "revólver", "pistola", "fuzil", "metralhadora", "munição",
+                "explosivo", "granada", "bomba", "armamento", "calibre"
+            ],
+            "Tráfico Humano": [
+                "escravidão", "exploração", "sequestro", "cárcere", "prostituição",
+                "aliciamento", "contrabando", "coação", "trabalho forçado", "servidão"
+            ],
+            "Discriminação": [
+                "racismo", "homofobia", "preconceito", "xenofobia", "intolerância",
+                "machismo", "segregação", "bullying", "injúria", "difamação"
             ]
         }
         
@@ -76,7 +96,12 @@ class AudioAnalyzerApp:
             "Morte": tk.BooleanVar(value=True),
             "Crimes Sexuais": tk.BooleanVar(value=True),
             "Família": tk.BooleanVar(value=True),
-            "Palavras Ofensivas": tk.BooleanVar(value=True)
+            "Palavras Ofensivas": tk.BooleanVar(value=True),
+            "Violência": tk.BooleanVar(value=True),
+            "Dinheiro": tk.BooleanVar(value=True),
+            "Armas": tk.BooleanVar(value=True),
+            "Tráfico Humano": tk.BooleanVar(value=True),
+            "Discriminação": tk.BooleanVar(value=True)
         }
         
         self.setup_ui()
