@@ -31,7 +31,7 @@ class AudioAnalyzerApp:
         self.nlp = spacy.load("pt_core_news_md")
         
         # Similarity threshold for topic detection
-        self.similarity_threshold = 0.6
+        self.similarity_threshold = 0.5
         
         # Dictionary of related words for each topic
         self.topic_related_words = {
@@ -138,8 +138,8 @@ class AudioAnalyzerApp:
         self.pdf_button.pack(pady=5)
         
         # Topics frame with scrollbar
-        self.topics_frame = ctk.CTkScrollableFrame(self.left_panel, height=200)
-        self.topics_frame.pack(pady=10, fill=tk.X)
+        self.topics_frame = ctk.CTkScrollableFrame(self.left_panel)
+        self.topics_frame.pack(pady=10, fill=tk.BOTH, expand=True)
         
         topics_label = ctk.CTkLabel(
             self.topics_frame,
@@ -182,7 +182,7 @@ class AudioAnalyzerApp:
         transcription_label = ctk.CTkLabel(self.right_panel, text="Transcrição:")
         transcription_label.pack(pady=5)
         
-        self.transcription_frame = ctk.CTkScrollableFrame(self.right_panel, height=300)
+        self.transcription_frame = ctk.CTkScrollableFrame(self.right_panel, height=200)
         self.transcription_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         self.transcription_text = ctk.CTkFrame(self.transcription_frame)
@@ -319,15 +319,6 @@ class AudioAnalyzerApp:
                 command=self.add_custom_topic
             )
             add_topic_button.pack(pady=5)
-            
-            # Botão de busca
-            self.search_button = ctk.CTkButton(
-                self.topics_frame,
-                text="Buscar Temas",
-                command=self.search_sensitive_topics,
-                state="normal" if hasattr(self, 'sentences') else "disabled"
-            )
-            self.search_button.pack(pady=5)
     
     def play_segment(self, start_time, end_time):
         """Reproduz um segmento específico do áudio"""
