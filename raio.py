@@ -77,6 +77,20 @@ class AudioAnalyzerApp:
             ]
         }
         
+        # Cores para cada tema sensível
+        self.topic_colors = {
+            "Drogas": "#FF1493",        # Rosa escuro
+            "Morte": "#4169E1",         # Azul real
+            "Crimes Sexuais": "#228B22", # Verde floresta
+            "Família": "#8B008B",       # Roxo escuro
+            "Palavras Ofensivas": "#DAA520", # Dourado escuro
+            "Violência": "#CD5C5C",     # Vermelho indiano
+            "Dinheiro": "#4682B4",      # Azul aço
+            "Armas": "#FF4500",         # Laranja vermelho
+            "Tráfico Humano": "#483D8B", # Azul ardósia escuro
+            "Discriminação": "#B22222"   # Vermelho tijolo
+        }
+        
         # Download necessary NLTK data
         nltk.download('punkt')
         nltk.download('averaged_perceptron_tagger')
@@ -222,6 +236,17 @@ class AudioAnalyzerApp:
         
         self.matches_text = ctk.CTkTextbox(self.results_frame, wrap=tk.WORD)
         self.matches_text.pack(fill=tk.BOTH, expand=True)
+
+        # Frame de legenda
+        legend_frame = ctk.CTkFrame(self.right_panel)
+        legend_frame.pack(pady=5, fill=tk.X)
+
+        legend_label = ctk.CTkLabel(legend_frame, text="Legenda:")
+        legend_label.pack(side=tk.LEFT, padx=5)
+
+        for topic, color in self.topic_colors.items():
+            legend_topic = ctk.CTkLabel(legend_frame, text=topic, fg_color=color, corner_radius=6, padx=6, pady=2)
+            legend_topic.pack(side=tk.LEFT, padx=2)
 
     def select_file(self):
         self.filename = filedialog.askopenfilename(
@@ -372,8 +397,8 @@ class AudioAnalyzerApp:
             
             threading.Thread(target=cleanup, daemon=True).start()
 
-    def create_sentence_frame(self, text, start_time, end_time):
-        """Cria um frame para uma sentença com botão de reprodução"""
+    def create_sentence_frame(self, text, start_time, end_time, topics_found=None):
+        """Cria um frame para uma sentença com botão de reprodução e marcação colorida"""
         frame = ctk.CTkFrame(self.transcription_text)
         frame.pack(fill=tk.X, padx=5, pady=2)
         
@@ -386,14 +411,43 @@ class AudioAnalyzerApp:
         )
         play_btn.pack(side=tk.LEFT, padx=5)
         
+        # Frame para o texto com fundo colorido se necessário
+        text_frame = ctk.CTkFrame(frame)
+        text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # Se houver temas encontrados, aplica as cores
+        text_color = "white" if topics_found else "black"  # Texto branco para fundos escuros
+        
         # Texto da transcrição
         text_label = ctk.CTkLabel(
-            frame,
+            text_frame,
             text=f"[{start_time:.2f}s - {end_time:.2f}s] {text}",
             wraplength=500,
-            justify=tk.LEFT
+            justify=tk.LEFT,
+            text_color=text_color
         )
         text_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        if topics_found:
+            # Usa a cor do primeiro tema encontrado como fundo
+            first_topic = list(topics_found.keys())[0]
+            text_frame.configure(fg_color=self.topic_colors[first_topic])
+            
+            # Cria labels para mostrar os temas encontrados
+            topics_frame = ctk.CTkFrame(frame)
+            topics_frame.pack(side=tk.RIGHT, padx=5)
+            
+            for topic, words in topics_found.items():
+                topic_label = ctk.CTkLabel(
+                    topics_frame,
+                    text=topic,
+                    fg_color=self.topic_colors[topic],
+                    text_color="white",  # Texto branco para melhor contraste
+                    corner_radius=6,
+                    padx=6,
+                    pady=2
+                )
+                topic_label.pack(side=tk.LEFT, padx=2)
         
         return frame
 
@@ -452,7 +506,7 @@ class AudioAnalyzerApp:
 
             # Display transcription with segments
             for text, start, end in self.sentences:
-                self.create_sentence_frame(text, start, end)
+                self.create_sentence_frame(text, start, end, None)  # Sem marcações inicialmente
 
             # Enable search and PDF buttons
             self.search_button.configure(state="normal")
@@ -470,27 +524,60 @@ class AudioAnalyzerApp:
         # Clear previous results
         self.matches_text.delete("1.0", tk.END)
         
+        # Limpa a área de transcrição
+        for widget in self.transcription_text.winfo_children():
+            widget.destroy()
+        
         # Check each sentence for sensitive topics
         matches = []
         for text, start, end in self.sentences:
+            topics_found = {}  # Dicionário para armazenar temas e palavras encontradas
+            
             for topic, var in self.topics.items():
                 if var.get():  # Se o tema está selecionado
                     is_sensitive, similar_words = self.find_sensitive_content(text, topic)
                     if is_sensitive:
-                        # Get the related words that were used in detection
+                        topics_found[topic] = similar_words
+                        
+                        # Formata o texto para a área de resultados
                         related_words = ", ".join(self.topic_related_words[topic])
                         detected_words = ", ".join(similar_words)
                         
-                        matches.append(
-                            f"Tema '{topic}' detectado na frase:\n"
-                            f"[{start:.2f}s - {end:.2f}s] '{text}'\n"
-                            f"Palavras relacionadas ao tema: {related_words}\n"
-                            f"Palavras detectadas: {detected_words}\n\n"
-                        )
+                        matches.append({
+                            "topic": topic,
+                            "text": text,
+                            "start": start,
+                            "end": end,
+                            "related_words": related_words,
+                            "detected_words": detected_words,
+                            "color": self.topic_colors[topic]
+                        })
+            
+            # Cria o frame da sentença com as marcações de cor apropriadas
+            self.create_sentence_frame(text, start, end, topics_found if topics_found else None)
         
-        # Display matches
+        # Display matches in results area with colored backgrounds
         if matches:
-            self.matches_text.insert("1.0", "".join(matches))
+            for match in matches:
+                # Cria um frame colorido para cada resultado
+                result_frame = ctk.CTkFrame(self.matches_text, fg_color=match["color"])
+                result_frame.pack(fill=tk.X, padx=5, pady=2, expand=True)
+                
+                result_text = (
+                    f"Tema '{match['topic']}' detectado na frase:\n"
+                    f"[{match['start']:.2f}s - {match['end']:.2f}s] '{match['text']}'\n"
+                    f"Palavras relacionadas ao tema: {match['related_words']}\n"
+                    f"Palavras detectadas: {match['detected_words']}\n\n"
+                )
+                
+                label = ctk.CTkLabel(
+                    result_frame,
+                    text=result_text,
+                    wraplength=500,
+                    justify=tk.LEFT,
+                    text_color="white"  # Texto branco para melhor contraste com fundos escuros
+                )
+                label.pack(padx=10, pady=5)
         else:
             self.matches_text.insert("1.0", "Nenhum tema sensível detectado.")
     
