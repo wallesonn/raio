@@ -1,0 +1,26 @@
+# Guia do Projeto Raio
+
+## Introdução
+Este documento serve como um guia detalhado para o aplicativo Raio, explicando seu funcionamento, arquitetura e as técnicas utilizadas em seu desenvolvimento.
+
+## Funcionamento do Aplicativo
+O aplicativo Raio é projetado para analisar áudio utilizando técnicas avançadas de processamento de sinais. Ele permite a análise em tempo real e a visualização dos dados processados.
+
+## Arquitetura
+A arquitetura do aplicativo é baseada em uma estrutura modular que facilita a manutenção e a escalabilidade. Os principais componentes incluem:
+- **Interface de Usuário**: Desenvolvida para ser intuitiva e responsiva.
+- **Módulo de Análise de Áudio**: Realiza o processamento e análise dos dados de áudio.
+- **Banco de Dados**: Armazena os resultados das análises para consultas futuras.
+
+## Técnicas Utilizadas
+O aplicativo utiliza diversas técnicas de processamento de sinais e aprendizado de máquina, incluindo:
+- **Transformada de Fourier**: Para análise de frequências.
+- **Redes Neurais**: Para reconhecimento de padrões em dados de áudio.
+
+## Referências Bibliográficas
+1. Smith, J. O. (2007). Mathematics of the Discrete Fourier Transform (DFT): With Audio Applications. W3K Publishing.
+2. Haykin, S., & Van Veen, B. (2005). Sinais e Sistemas. Bookman.
+3. Bishop, C. M. (2006). Pattern Recognition and Machine Learning. Springer.
+
+## Conclusão
+Este guia fornece uma visão geral do aplicativo Raio, destacando suas funcionalidades e as bases teóricas das técnicas empregadas. Para mais informações, consulte a documentação do código e as referências bibliográficas listadas.

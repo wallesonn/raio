@@ -128,19 +128,34 @@ class AudioAnalyzerApp:
             ]
         }
         
-        # Cores para cada tema sensível
+        # Cores para cada tema sensível (tons mais escuros para a interface)
         self.topic_colors = {
             "Nenhum": "#808080",      # Cinza
-            "Drogas": "#FF1493",        # Rosa escuro
-            "Morte": "#4169E1",         # Azul real
+            "Drogas": "#FF1493",      # Rosa escuro
+            "Morte": "#4169E1",       # Azul real
             "Crimes Sexuais": "#228B22", # Verde floresta
-            "Família": "#8B008B",       # Roxo escuro
+            "Família": "#8B008B",     # Roxo escuro
             "Palavras Ofensivas": "#DAA520", # Dourado escuro
-            "Violência": "#CD5C5C",     # Vermelho indiano
-            "Dinheiro": "#4682B4",      # Azul aço
-            "Armas": "#FF4500",         # Laranja vermelho
+            "Violência": "#CD5C5C",   # Vermelho indiano
+            "Dinheiro": "#4682B4",    # Azul aço
+            "Armas": "#FF4500",       # Laranja vermelho
             "Tráfico Humano": "#483D8B", # Azul ardósia escuro
-            "Discriminação": "#B22222"   # Vermelho tijolo
+            "Discriminação": "#B22222"  # Vermelho tijolo
+        }
+        
+        # Cores claras para highlight no PDF
+        self.pdf_highlight_colors = {
+            "Nenhum": "#E0E0E0",      # Cinza claro
+            "Drogas": "#FFB6C1",      # Rosa claro
+            "Morte": "#B0C4DE",       # Azul claro
+            "Crimes Sexuais": "#98FB98", # Verde claro
+            "Família": "#DDA0DD",     # Roxo claro
+            "Palavras Ofensivas": "#F0E68C", # Amarelo claro
+            "Violência": "#F08080",   # Vermelho claro
+            "Dinheiro": "#87CEEB",    # Azul céu claro
+            "Armas": "#FFA07A",       # Salmão claro
+            "Tráfico Humano": "#B0C4DE", # Azul aço claro
+            "Discriminação": "#FFA07A"  # Salmão claro
         }
         
         # Download necessary NLTK data
@@ -739,22 +754,85 @@ class AudioAnalyzerApp:
             pdf.set_font('Arial', 'B', 12)
             pdf.cell(0, 10, 'Temas Sensíveis Detectados:', ln=True)
             
-            # Procura por temas sensíveis
+            # Organizar trechos por tema
+            topics_content = {}
+            for topic, var in self.topics.items():
+                if var.get() and topic != "Nenhum":  # Se o tema está selecionado e não é "Nenhum"
+                    topics_content[topic] = []
+            
+            # Procurar por temas sensíveis em cada sentença
+            for text, start, end in self.sentences:
+                for topic in topics_content.keys():
+                    has_content, similar_words = self.find_sensitive_content(text, topic)
+                    if has_content:
+                        topics_content[topic].append({
+                            'text': text,
+                            'start': start,
+                            'end': end,
+                            'similar_words': similar_words
+                        })
+            
+            # Gerar relatório agrupado por temas
             found_topics = False
             pdf.set_font('Arial', '', 10)
             
-            for text, start, end in self.sentences:
-                for topic, var in self.topics.items():
-                    if var.get():  # Se o tema está selecionado
-                        has_content, similar_words = self.find_sensitive_content(text, topic)
-                        if has_content:
-                            found_topics = True
-                            timestamp = f'[{start:.2f}s - {end:.2f}s]'
-                            pdf.set_font('Arial', 'B', 10)
-                            pdf.cell(0, 6, f'Tema: {topic}', ln=True)
-                            pdf.set_font('Arial', '', 10)
-                            pdf.multi_cell(0, 6, f'Tempo: {timestamp}\nTexto: {text}\nPalavras detectadas: {", ".join(similar_words)}', ln=True)
-                            pdf.ln(5)
+            for topic, content_list in topics_content.items():
+                if content_list:  # Se houver conteúdo para este tema
+                    found_topics = True
+                    
+                    # Cabeçalho do tema
+                    pdf.set_font('Arial', 'B', 12)
+                    pdf.ln(5)
+                    
+                    # Converter cor hex para RGB para o cabeçalho
+                    r = int(self.pdf_highlight_colors[topic][1:3], 16)
+                    g = int(self.pdf_highlight_colors[topic][3:5], 16)
+                    b = int(self.pdf_highlight_colors[topic][5:7], 16)
+                    pdf.set_fill_color(r, g, b)
+                    pdf.cell(0, 10, f'Tema: {topic}', ln=True, fill=True)
+                    pdf.ln(2)
+                    
+                    # Listar trechos do tema
+                    pdf.set_font('Arial', '', 10)
+                    for item in content_list:
+                        timestamp = f'[{item["start"]:.2f}s - {item["end"]:.2f}s]'
+                        pdf.multi_cell(0, 6, f'Tempo: {timestamp}', ln=True)
+                        
+                        # Destacar palavras sensíveis no texto
+                        text = item["text"]
+                        
+                        # Criar uma lista de posições e palavras para destacar
+                        highlights = []
+                        for word in item["similar_words"]:
+                            start_pos = text.lower().find(word.lower())
+                            if start_pos != -1:
+                                highlights.append((start_pos, start_pos + len(word), word))
+                        
+                        # Ordenar highlights por posição
+                        highlights.sort(key=lambda x: x[0])
+                        
+                        # Imprimir texto com palavras destacadas
+                        current_pos = 0
+                        pdf.multi_cell(0, 6, "Texto: ", ln=False)
+                        for start, end, word in highlights:
+                            # Texto antes da palavra destacada
+                            if start > current_pos:
+                                pdf.set_fill_color(255, 255, 255)  # Fundo branco
+                                pdf.write(6, text[current_pos:start])
+                            
+                            # Palavra destacada com fundo colorido
+                            pdf.set_fill_color(r, g, b)  # Cor do tema
+                            pdf.cell(pdf.get_string_width(text[start:end]), 6, text[start:end], fill=True)
+                            current_pos = end
+                        
+                        # Texto restante após última palavra destacada
+                        if current_pos < len(text):
+                            pdf.set_fill_color(255, 255, 255)  # Fundo branco
+                            pdf.write(6, text[current_pos:])
+                        
+                        pdf.ln()
+                        pdf.multi_cell(0, 6, f'Palavras detectadas: {", ".join(item["similar_words"])}', ln=True)
+                        pdf.ln(3)
             
             if not found_topics:
                 pdf.multi_cell(0, 6, 'Nenhum tema sensível detectado.', ln=True)
